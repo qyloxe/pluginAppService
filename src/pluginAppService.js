@@ -1,6 +1,6 @@
 /**
- * pluginAppService v0.6.5 - plugin application service
- * License: MIT
+ * pluginAppService v0.6.6 - ICOR plugin application service
+ * License: proprietary - all rights reserved
  */ 
 jQuery(function(){
 
@@ -70,6 +70,22 @@ jQuery(function(){
             plugin.registerTemplates.call(plugin,plugin.settings.templates);
          }
          
+         if (plugin.settings.handlebarsHelpers) {
+            for (ihh in plugin.settings.handlebarsHelpers) {
+               Handlebars.registerHelper(ihh,plugin.settings.handlebarsHelpers[ihh]);
+            }
+         }
+
+         if (plugin.settings.clickEvents) {
+            for (ice in plugin.settings.clickEvents) {
+               if (plugin.settings.clickEvents[ice]['onClick']) {
+                  plugin.registerClickEvent(ice,plugin.settings.clickEvents[ice]['onClick'],plugin.settings.clickEvents[ice]['onCall']);
+               } else {
+                  plugin.registerClickEvent(ice,plugin.settings.clickEvents[ice]['onCall']);
+               }
+            }
+         }
+
          if (plugin.settings.onInit) {
             plugin.settings.onInit.call(plugin);
          }
@@ -143,10 +159,13 @@ jQuery(function(){
       };
 
       plugin.parseDate = function(dateStr) {
-         var a=dateStr.split("T");
-         var d=a[0].split("-");
-         var t=a[1].split(":");
-         return new Date(d[0],(d[1]-1),d[2],t[0],t[1],t[2]);
+         if (typeof dateStr==='string') {
+            var a=dateStr.split("T");
+            var d=a[0].split("-");
+            var t=a[1].split(":");
+            return new Date(d[0],(d[1]-1),d[2],t[0],t[1],t[2]);
+         }
+         return dateStr;
       }
       
       plugin.hhFormatYMDHMS = function(element) {
@@ -279,6 +298,8 @@ jQuery(function(){
          var editor = new EpicEditor(opts);
          editor.load();
          jQuery("#"+acontainer).data("epiceditor",editor);
+         //jQuery("#"+acontainer).css({height:'404px'});
+         //editor.reflow('height');
          return editor;
       };
 
@@ -354,7 +375,9 @@ jQuery(function(){
       plugin.renderXMLTemplate = function(aparams,atemplate,atarget,callback){
          return jQuery.get(plugin.settings.urlJSON,aparams,function(data){
             var json=jQuery.xml2json(data);
-            plugin.renderHTMLTemplate(json,atemplate,atarget);
+            if (atarget) {
+               plugin.renderHTMLTemplate(json,atemplate,atarget);
+            }
             if (callback) {
                callback.call(this,json);
             }
@@ -363,7 +386,9 @@ jQuery(function(){
 
       plugin.renderJSONTemplate = function(aparams,atemplate,atarget,callback){
          return jQuery.get(plugin.settings.urlJSON,aparams,function(json){
-            plugin.renderHTMLTemplate(json,atemplate,atarget);
+            if (atarget) {
+               plugin.renderHTMLTemplate(json,atemplate,atarget);
+            }
             if (callback) {
                callback.call(this,json);
             }
