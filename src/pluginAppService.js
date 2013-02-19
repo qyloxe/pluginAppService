@@ -14,7 +14,7 @@ jQuery(function(){
          vars: {},
          templates: [],
          epiceditor: {
-            basePath: '/js/epiceditor',
+            basePath: '/icorlib/epiceditor',
             clientSideStorage: false,
             localStorageName: 'epiceditor',
             parser: marked,
