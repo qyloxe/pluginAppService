@@ -1,5 +1,5 @@
 /**
- * pluginAppService v0.6.4 - ICOR plugin application service
+ * pluginAppService v0.6.6 - ICOR plugin application service
  * License: proprietary - all rights reserved
  */ 
 jQuery(function(){
@@ -10,7 +10,7 @@ jQuery(function(){
          pluginid:-1,
          urlJSON:'',
          historyPath: 'app',
-         errorPOSTFailure: 'WystÄ…piÅ‚ bÅ‚Ä…d w komunikacji z serwerem\nSkontaktuj siÄ™ z administratorem systemu w celu przekazania informacji o okolicznoÅ›ciach wystÄ…pienia bÅ‚Ä™du.',
+         errorPOSTFailure: 'Wyst¹pi³ b³¹d w komunikacji z serwerem\nSkontaktuj siê z administratorem systemu w celu przekazania informacji o okolicznoœciach wyst¹pienia b³êdu.',
          vars: {},
          templates: [],
          epiceditor: {
@@ -35,7 +35,8 @@ jQuery(function(){
                preview: 80,
                edit: 79
             }
-         }
+         },
+         _pending:1
       };
       
       var plugin = this;
@@ -44,6 +45,7 @@ jQuery(function(){
          plugin.el=el;
          plugin.$el=jQuery(el);
          plugin.dTemplates={};
+         plugin.dTemplatesSrc={};
          plugin.postRender=[];
          plugin.lDeferreds=[];
 
@@ -66,10 +68,26 @@ jQuery(function(){
 
          plugin.settings = jQuery.extend({},defaults,options,plugin.$el.data('plugin-options'));
 
+         if (plugin.settings.handlebarsHelpers) {
+            for (ihh in plugin.settings.handlebarsHelpers) {
+               Handlebars.registerHelper(ihh,plugin.settings.handlebarsHelpers[ihh]);
+            }
+         }
+
          if (plugin.settings.templates) {
             plugin.registerTemplates.call(plugin,plugin.settings.templates);
          }
          
+         if (plugin.settings.clickEvents) {
+            for (ice in plugin.settings.clickEvents) {
+               if (plugin.settings.clickEvents[ice]['onClick']) {
+                  plugin.registerClickEvent(ice,plugin.settings.clickEvents[ice]['onClick'],plugin.settings.clickEvents[ice]['onCall']);
+               } else {
+                  plugin.registerClickEvent(ice,plugin.settings.clickEvents[ice]['onCall']);
+               }
+            }
+         }
+
          if (plugin.settings.onInit) {
             plugin.settings.onInit.call(plugin);
          }
@@ -288,22 +306,26 @@ jQuery(function(){
       };
 
       plugin.registerTemplate = function(atemplate){
-         return jQuery.ajax({
+         var dec=jQuery.Deferred();
+         var dpr=dec.promise();
+         plugin.lDeferreds.push(dpr);
+         jQuery.ajax({
             url:'PLUGIN_TEMPLATE_'+plugin.settings.pluginid+'_'+atemplate+'.asp',
             async:true,
-            success:function(data) {
-               data='\n<!-- TEMPLATE START: '+atemplate+' -->\n'+data+'\n<!-- TEMPLATE END: '+atemplate+' -->\n';
-               template=Handlebars.compile(data);
-               plugin.dTemplates[atemplate]=template;
-               Handlebars.registerPartial(atemplate,template);
+            cache:false,
+            dataType:'text',
+            success:function(data,status,xhr) {
+               var s='\n<!-- TEMPLATE START: '+atemplate+' -->\n'+xhr.responseText+'\n<!-- TEMPLATE END: '+atemplate+' -->\n';
+               plugin.dTemplatesSrc[atemplate]=s;
+               dec.resolve();
             }
          });
+         return dpr;
       };
       
       plugin.registerTemplates = function(ltemplates) {
          jQuery.map(ltemplates,function(atemplate,i){
-            var ret=plugin.registerTemplate(atemplate);
-            plugin.lDeferreds.push(ret);
+            plugin.registerTemplate(atemplate);
          });
       };
 
@@ -316,6 +338,9 @@ jQuery(function(){
          }
          plugin['_do'+eventname]=funcCall;
          plugin['_cl'+eventname]=function(event,defaults){
+            if (plugin.settings._pending) {
+               return false;
+            }
             if (event) {
                //event.stopPropagation();
                //jQuery('.dropdown.open .dropdown-toggle').dropdown('toggle');
@@ -343,7 +368,17 @@ jQuery(function(){
          var template=plugin.dTemplates[atemplate];
          plugin.postRender=[];
          if (!template) {
-            template=Handlebars.compile(jQuery(atemplate).html());
+            var template=plugin.dTemplatesSrc[atemplate];
+            if (!template) {
+               template=Handlebars.compile(jQuery(atemplate).html());
+            } else {
+               jQuery.map(plugin.dTemplatesSrc,function(tvalue,tkey){
+                  var template=Handlebars.compile(tvalue);
+                  plugin.dTemplates[tkey]=template;
+                  Handlebars.registerPartial(tkey,template);
+               });
+               template=plugin.dTemplates[atemplate];
+            }
          }
          var atext=template(adata);
          atarget.html(atext);
@@ -387,6 +422,9 @@ jQuery(function(){
          if (jQuery.isEmptyObject(event.parameters)) {
             return false;
          }
+         if (plugin.settings._pending) {
+            return false;
+         }
          var m=event.parameters.m;
          var url=event.path;
          if (url=='/'+plugin.settings.historyPath) {
@@ -417,16 +455,17 @@ jQuery(function(){
             dataType: "json"
          });
       };
-
-      init();
       
       plugin.registerClickEvent('evBack',
          function (params) {
             window.history.go(-2);
          }
       );
+
+      init();
       
       jQuery.when.apply(plugin,plugin.lDeferreds).then(function(){
+         plugin.settings._pending=0;
          if (plugin.settings.onStart) {
             plugin.settings.onStart.call(plugin);
          }
