@@ -1,16 +1,21 @@
 /**
- * pluginAppService v0.6.6 - ICOR plugin application service
+ * pluginAppService v0.7.1 - ICOR plugin application service
  * License: proprietary - all rights reserved
  */ 
 jQuery(function(){
 
    jQuery.pluginAppService = function(el,options) {
 
+      var _pluginDeferred=jQuery.Deferred();
+      var _pluginPromise=_pluginDeferred.promise();
+
+      var plugin = this;
+
       var defaults={
          pluginid:-1,
          urlJSON:'',
          historyPath: 'app',
-         errorPOSTFailure: 'Wyst¹pi³ b³¹d w komunikacji z serwerem\nSkontaktuj siê z administratorem systemu w celu przekazania informacji o okolicznoœciach wyst¹pienia b³êdu.',
+         errorPOSTFailure: 'WystÄ…piÅ‚ bÅ‚Ä…d w komunikacji z serwerem\nSkontaktuj siÄ™ z administratorem systemu w celu przekazania informacji o okolicznoÅ›ciach wystÄ…pienia bÅ‚Ä™du.',
          vars: {},
          templates: [],
          epiceditor: {
@@ -36,10 +41,219 @@ jQuery(function(){
                edit: 79
             }
          },
-         _pending:1
+         handlebarsHelpers: {
+            'add': function(element,value) {
+               return element+value;
+            },
+            'sumRecursive':function(element,value) {
+               function _hhSumRecursive(bitem) {
+                  if (!bitem) {
+                     return 0;
+                  }
+                  var v=parseInt(bitem[value]);
+                  if (jQuery.isArray(bitem[element])) {
+                     for (var i=0; i<bitem[element].length; i++) {
+                        v+=_hhSumRecursive(bitem[element][i]);
+                     }
+                  } else if (bitem[element]) {
+                     v+=_hhSumRecursive(bitem[element]);
+                  };
+                  return v;
+               };
+               return _hhSumRecursive(this);
+            },
+            'maxRecursiveDate':function(element,value,adefault) {
+               function _compareMaxDD(d1,d2) {
+                  if (!d1) {
+                     return d2;
+                  }
+                  if (!d2) {
+                     return d1;
+                  }
+                  if (d1>d2) {
+                     return d1;
+                  }
+                  return d2;
+               }
+               function _hhMaxRecursiveDate(bitem) {
+                  var v=undefined;
+                  if (!bitem) {
+                     return v;
+                  }
+                  if (bitem[value]) {
+                     var v=plugin.settings.utils.parseDate(bitem[value]);
+                  }
+                  if (jQuery.isArray(bitem[element])) {
+                     for (var i=0; i<bitem[element].length; i++) {
+                        v=_compareMaxDD(v,_hhMaxRecursiveDate(bitem[element][i]));
+                     }
+                  } else if (bitem[element]) {
+                     v=_compareMaxDD(v,_hhMaxRecursiveDate(bitem[element]))
+                  };
+                  return v;
+               };
+               var v=_hhMaxRecursiveDate(this);
+               if (v) {
+                  return plugin.settings.handlebarsHelpers.formatYMDHMS(v);
+               }
+               if (!adefault) {
+                  adefault='';
+               }
+               return adefault;
+            },
+            'formatYMDHMS':function(element) {
+               var s='-';
+               if (element) {
+                  var bdate=plugin.settings.utils.parseDate(element);
+                  s=plugin.settings.utils.dateToYMD(bdate)+' '+plugin.settings.utils.dateToHMS(bdate);
+               }
+               return s;
+            },
+            'formatYMDHM':function(element) {
+               var s='-';
+               if (element) {
+                  var bdate=plugin.settings.utils.parseDate(element);
+                  s=plugin.settings.utils.dateToYMD(bdate)+' '+plugin.settings.utils.dateToHM(bdate);
+               }
+               return s;
+            },
+            'formatYMD':function(element) {
+               var s='-';
+               if (element) {
+                  var bdate=plugin.settings.utils.parseDate(element);
+                  s=plugin.settings.utils.dateToYMD(bdate);
+               }
+               return s;
+            },
+            'formatHMS':function(element) {
+               var s='-';
+               if (element) {
+                  var bdate=plugin.settings.utils.parseDate(element);
+                  s=plugin.settings.utils.dateToHMS(bdate);
+               }
+               return s;
+            },
+            'formatHM':function(element) {
+               var s='-';
+               if (element) {
+                  var bdate=plugin.settings.utils.parseDate(element);
+                  s=plugin.settings.utils.dateToHM(bdate);
+               }
+               return s;
+            },
+            'epicEditor':function(elementid,options) {
+               var sc='';
+               if (options.hash["class"]) {
+                  sc=' class="'+options.hash["class"]+'"';
+               }
+               plugin.postRender.push(function(){
+                  var editor=plugin.settings.utils.createEpicEditor(elementid);
+                  if (options.hash.text) {
+                    editor.importFile("markdown",options.hash.text);
+                  }
+               });
+               return new Handlebars.SafeString('<div'+sc+' id="'+elementid+'"></div>');
+            },
+            'markdown':function(element) {
+               var s='';
+               if (element) {
+                  s=marked(element);
+               }
+               return new Handlebars.SafeString(s);
+            },
+            'ifeq':function(conditional,value,options) {
+               if (conditional==value) {
+                  return options.fn(this);
+               } else {
+                  return options.inverse(this);
+               }
+            },
+            'ifneq':function(conditional,value,options) {
+               if (conditional!=value) {
+                  return options.fn(this);
+               } else {
+                  return options.inverse(this);
+               }
+            },
+            'ifge':function(conditional,value,options) {
+               if (conditional>value) {
+                  return options.fn(this);
+               } else {
+                  return options.inverse(this);
+               }
+            },
+            'ifle':function(conditional,value,options) {
+               if (conditional<value) {
+                  return options.fn(this);
+               } else {
+                  return options.inverse(this);
+               }
+            },
+            'ifleq':function(conditional,value,options) {
+               if (conditional<=value) {
+                  return options.fn(this);
+               } else {
+                  return options.inverse(this);
+               }
+            },
+            'ifgeq':function(conditional,value,options) {
+               if (conditional>=value) {
+                  return options.fn(this);
+               } else {
+                  return options.inverse(this);
+               }
+            }
+         },
+         utils: {
+            getTemplateURL: function(atemplate) {
+               return 'PLUGIN_TEMPLATE_'+plugin.settings.pluginid+'_'+atemplate+'.asp'
+            },
+            dateToYMD:function(date) {
+                var d=date.getDate();
+                var m=date.getMonth()+1;
+                var y=date.getFullYear();
+                return ''+y+'-'+(m<=9?'0'+m:m)+'-'+(d<=9?'0'+d:d);
+            },
+            dateToHMS:function(date) {
+                var h=date.getHours();
+                var m=date.getMinutes();
+                var s=date.getSeconds();
+                return ''+(h<=9?'0'+h:h)+':'+(m<=9?'0'+m:m)+':'+(s<=9?'0'+s:s);
+            },
+            dateToHM:function(date) {
+                var h=date.getHours();
+                var m=date.getMinutes();
+                return ''+(h<=9?'0'+h:h)+':'+(m<=9?'0'+m:m);
+            },
+            parseDate:function(dateStr) {
+               if (typeof dateStr==='string') {
+                  var a=dateStr.split("T");
+                  var d=a[0].split("-");
+                  var t=a[1].split(":");
+                  return new Date(d[0],(d[1]-1),d[2],t[0],t[1],t[2]);
+               }
+               return dateStr;
+            },
+            createEpicEditor:function(acontainer){
+               var opts = jQuery.extend({},plugin.settings.epiceditor,{container: acontainer});
+               var editor = new EpicEditor(opts);
+               editor.load();
+               jQuery("#"+acontainer).data("epiceditor",editor);
+               //jQuery("#"+acontainer).css({height:'404px'});
+               //editor.reflow('height');
+               return editor;
+            }
+         },
+         clickEvents: {
+            evBack: {
+               onCall: function (params) {
+                  window.history.go(-2);
+               }
+            }
+         },
+         _pending:1,
+         promise:_pluginPromise
       };
-      
-      var plugin = this;
       
       init=function() {
          plugin.el=el;
@@ -49,24 +263,7 @@ jQuery(function(){
          plugin.postRender=[];
          plugin.lDeferreds=[];
 
-         Handlebars.registerHelper('add',plugin.hhAdd);
-         Handlebars.registerHelper('sumRecursive',plugin.hhSumRecursive);
-         Handlebars.registerHelper('maxRecursiveDate',plugin.hhMaxRecursiveDate);
-         Handlebars.registerHelper('formatYMDHMS',plugin.hhFormatYMDHMS);
-         Handlebars.registerHelper('formatYMDHM',plugin.hhFormatYMDHM);
-         Handlebars.registerHelper('formatYMD',plugin.hhFormatYMD);
-         Handlebars.registerHelper('formatHMS',plugin.hhFormatHMS);
-         Handlebars.registerHelper('formatHM',plugin.hhFormatHM);
-         Handlebars.registerHelper('epicEditor',plugin.hhEpicEditor);
-         Handlebars.registerHelper('markdown',plugin.hhMarkdown);
-         Handlebars.registerHelper('ifeq',plugin.hhIfEQ);
-         Handlebars.registerHelper('ifneq',plugin.hhIfNEQ);
-         Handlebars.registerHelper('ifge',plugin.hhIfGE);
-         Handlebars.registerHelper('ifle',plugin.hhIfLE);
-         Handlebars.registerHelper('ifleq',plugin.hhIfLEQ);
-         Handlebars.registerHelper('ifgeq',plugin.hhIfGEQ);
-
-         plugin.settings = jQuery.extend({},defaults,options,plugin.$el.data('plugin-options'));
+         plugin.settings = jQuery.extend(true,{},defaults,options,plugin.$el.data('plugin-options'));
 
          if (plugin.settings.handlebarsHelpers) {
             for (ihh in plugin.settings.handlebarsHelpers) {
@@ -93,230 +290,22 @@ jQuery(function(){
          }
       };
 
-      plugin.hhAdd = function(element,value) {
-         return element+value;
-      };
-      
-      plugin.hhIfEQ=function(conditional,value,options) {
-         if (conditional==value) {
-            return options.fn(this);
-         } else {
-            return options.inverse(this);
-         }
-      };
-      plugin.hhIfNEQ=function(conditional,value,options) {
-         if (conditional!=value) {
-            return options.fn(this);
-         } else {
-            return options.inverse(this);
-         }
-      };
-      plugin.hhIfGE=function(conditional,value,options) {
-         if (conditional>value) {
-            return options.fn(this);
-         } else {
-            return options.inverse(this);
-         }
-      };
-      plugin.hhIfLE=function(conditional,value,options) {
-         if (conditional<value) {
-            return options.fn(this);
-         } else {
-            return options.inverse(this);
-         }
-      };
-      plugin.hhIfGEQ=function(conditional,value,options) {
-         if (conditional>=value) {
-            return options.fn(this);
-         } else {
-            return options.inverse(this);
-         }
-      };
-      plugin.hhIfLEQ=function(conditional,value,options) {
-         if (conditional<=value) {
-            return options.fn(this);
-         } else {
-            return options.inverse(this);
-         }
-      };
-      
-      plugin.dateToYMD=function(date) {
-          var d=date.getDate();
-          var m=date.getMonth()+1;
-          var y=date.getFullYear();
-          return ''+y+'-'+(m<=9?'0'+m:m)+'-'+(d<=9?'0'+d:d);
-      };
-      
-      plugin.dateToHMS=function(date) {
-          var h=date.getHours();
-          var m=date.getMinutes();
-          var s=date.getSeconds();
-          return ''+(h<=9?'0'+h:h)+':'+(m<=9?'0'+m:m)+':'+(s<=9?'0'+s:s);
-      };
-      
-      plugin.dateToHM=function(date) {
-          var h=date.getHours();
-          var m=date.getMinutes();
-          return ''+(h<=9?'0'+h:h)+':'+(m<=9?'0'+m:m);
-      };
-
-      plugin.parseDate = function(dateStr) {
-         if (typeof dateStr==='string') {
-            var a=dateStr.split("T");
-            var d=a[0].split("-");
-            var t=a[1].split(":");
-            return new Date(d[0],(d[1]-1),d[2],t[0],t[1],t[2]);
-         }
-         return dateStr;
-      }
-      
-      plugin.hhFormatYMDHMS = function(element) {
-         var s='-';
-         if (element) {
-            var bdate=plugin.parseDate(element);
-            s=plugin.dateToYMD(bdate)+' '+plugin.dateToHMS(bdate);
-         }
-         return s;
-      };
-      
-      plugin.hhFormatYMDHM = function(element) {
-         var s='-';
-         if (element) {
-            var bdate=plugin.parseDate(element);
-            s=plugin.dateToYMD(bdate)+' '+plugin.dateToHM(bdate);
-         }
-         return s;
-      };
-      
-      plugin.hhFormatYMD = function(element) {
-         var s='-';
-         if (element) {
-            var bdate=plugin.parseDate(element);
-            s=plugin.dateToYMD(bdate);
-         }
-         return s;
-      };
-      
-      plugin.hhFormatHMS = function(element) {
-         var s='-';
-         if (element) {
-            var bdate=plugin.parseDate(element);
-            s=plugin.dateToHMS(bdate);
-         }
-         return s;
-      };
-      
-      plugin.hhFormatHM = function(element) {
-         var s='-';
-         if (element) {
-            var bdate=plugin.parseDate(element);
-            s=plugin.dateToHM(bdate);
-         }
-         return s;
-      };
-      
-      plugin.hhSumRecursive = function(element,value) {
-         function _hhSumRecursive(bitem) {
-            if (!bitem) {
-               return 0;
-            }
-            var v=parseInt(bitem[value]);
-            if (jQuery.isArray(bitem[element])) {
-               for (var i=0; i<bitem[element].length; i++) {
-                  v+=_hhSumRecursive(bitem[element][i]);
-               }
-            } else if (bitem[element]) {
-               v+=_hhSumRecursive(bitem[element]);
-            };
-            return v;
-         };
-         return _hhSumRecursive(this);
-      };
-      
-      plugin.hhMaxRecursiveDate = function(element,value,adefault) {
-         function _compareMaxDD(d1,d2) {
-            if (!d1) {
-               return d2;
-            }
-            if (!d2) {
-               return d1;
-            }
-            if (d1>d2) {
-               return d1;
-            }
-            return d2;
-         }
-         function _hhMaxRecursiveDate(bitem) {
-            var v=undefined;
-            if (!bitem) {
-               return v;
-            }
-            if (bitem[value]) {
-               var v=plugin.parseDate(bitem[value]);
-            }
-            if (jQuery.isArray(bitem[element])) {
-               for (var i=0; i<bitem[element].length; i++) {
-                  v=_compareMaxDD(v,_hhMaxRecursiveDate(bitem[element][i]));
-               }
-            } else if (bitem[element]) {
-               v=_compareMaxDD(v,_hhMaxRecursiveDate(bitem[element]))
-            };
-            return v;
-         };
-         var v=_hhMaxRecursiveDate(this);
-         if (v) {
-            return plugin.hhFormatYMDHMS(v);
-         }
-         if (!adefault) {
-            adefault='';
-         }
-         return adefault;
-      };
-      
-      plugin.hhEpicEditor=function(elementid,options) {
-         var sc='';
-         if (options.hash["class"]) {
-            sc=' class="'+options.hash["class"]+'"';
-         }
-         plugin.postRender.push(function(){
-            var editor=plugin.createEpicEditor(elementid);
-            if (options.hash.text) {
-              editor.importFile("markdown",options.hash.text);
-            }
-         });
-         return new Handlebars.SafeString('<div'+sc+' id="'+elementid+'"></div>');
-      };
-      
-      plugin.hhMarkdown=function(element) {
-         var s='';
-         if (element) {
-            s=marked(element);
-         }
-         return new Handlebars.SafeString(s);
-      };
-
-      plugin.createEpicEditor = function(acontainer){
-         var opts = jQuery.extend({},plugin.settings.epiceditor,{container: acontainer});
-         var editor = new EpicEditor(opts);
-         editor.load();
-         jQuery("#"+acontainer).data("epiceditor",editor);
-         //jQuery("#"+acontainer).css({height:'404px'});
-         //editor.reflow('height');
-         return editor;
-      };
-
       plugin.registerTemplate = function(atemplate){
          var dec=jQuery.Deferred();
          var dpr=dec.promise();
          plugin.lDeferreds.push(dpr);
          jQuery.ajax({
-            url:'PLUGIN_TEMPLATE_'+plugin.settings.pluginid+'_'+atemplate+'.asp',
+            url: plugin.settings.utils.getTemplateURL(atemplate),
             async:true,
             cache:false,
             dataType:'text',
             success:function(data,status,xhr) {
                var s='\n<!-- TEMPLATE START: '+atemplate+' -->\n'+xhr.responseText+'\n<!-- TEMPLATE END: '+atemplate+' -->\n';
                plugin.dTemplatesSrc[atemplate]=s;
+               dec.resolve();
+            },
+            error:function(){
+               alert("err");
                dec.resolve();
             }
          });
@@ -392,7 +381,12 @@ jQuery(function(){
       };
       
       plugin.renderXMLTemplate = function(aparams,atemplate,atarget,callback){
-         return jQuery.get(plugin.settings.urlJSON,aparams,function(data){
+         var amethod=jQuery.get;
+         if (aparams._method=='post') {
+            amethod=jQuery.post;
+            delete aparams._method;
+         }
+         return amethod(plugin.settings.urlJSON,aparams,function(data){
             var json=jQuery.xml2json(data);
             if (atarget) {
                plugin.renderHTMLTemplate(json,atemplate,atarget);
@@ -402,9 +396,14 @@ jQuery(function(){
             }
          },"html");
       };
-
+      
       plugin.renderJSONTemplate = function(aparams,atemplate,atarget,callback){
-         return jQuery.get(plugin.settings.urlJSON,aparams,function(json){
+         var amethod=jQuery.get;
+         if (aparams._method=='post') {
+            amethod=jQuery.post;
+            delete aparams._method;
+         }
+         return amethod(plugin.settings.urlJSON,aparams,function(json){
             if (atarget) {
                plugin.renderHTMLTemplate(json,atemplate,atarget);
             }
@@ -418,7 +417,8 @@ jQuery(function(){
          plugin['_cl'+eventname].call(this,event,defaults);
       };
       
-      jQuery.address.change(function(event) {
+      jQuery.address.init(function(event) {
+      }).change(function(event) {
          if (jQuery.isEmptyObject(event.parameters)) {
             return false;
          }
@@ -430,7 +430,7 @@ jQuery(function(){
          if (url=='/'+plugin.settings.historyPath) {
             plugin['_do'+event.parameters.m].call(plugin,event.parameters);
          }
-         return false;
+         return true;
       });
       
       plugin.postData = function(data,onsuccess,onfailure) {
@@ -455,12 +455,6 @@ jQuery(function(){
             dataType: "json"
          });
       };
-      
-      plugin.registerClickEvent('evBack',
-         function (params) {
-            window.history.go(-2);
-         }
-      );
 
       init();
       
@@ -469,6 +463,7 @@ jQuery(function(){
          if (plugin.settings.onStart) {
             plugin.settings.onStart.call(plugin);
          }
+         _pluginDeferred.resolve();
       });
       
    };
